@@ -1,0 +1,19 @@
+{
+    "model_name": "Linear Regression",
+    "test_r2": -0.010790718666284116,
+    "test_rmse": 9.361889065817408,
+    "features": [
+        "Age",
+        "Protein1",
+        "Protein2",
+        "Protein3",
+        "Protein4",
+        "Tumour_Stage",
+        "Histology",
+        "ER status",
+        "PR status",
+        "HER2 status",
+        "Surgery_type"
+    ],
+    "training_date": "2025-11-22 09:44:31"
+}
