@@ -3,7 +3,7 @@ import 'package:http/http.dart' as http;
 import 'dart:convert';
 
 // API Configuration - Update this with your API URL
-const String apiBaseUrl = 'http://localhost:8000';
+const String apiBaseUrl = 'https://breast-cancer-survival-regression.onrender.com';
 const String predictEndpoint = '/predict';
 
 void main() {
