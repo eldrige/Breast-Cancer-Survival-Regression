@@ -51,8 +51,7 @@ class _PredictionPageState extends State<PredictionPage> {
   String? _selectedPRStatus;
   String? _selectedHER2Status;
 
-  // Prediction result
-  Map<String, dynamic>? _predictionResult;
+  // Error message
   String? _errorMessage;
   bool _isLoading = false;
 
@@ -69,9 +68,8 @@ class _PredictionPageState extends State<PredictionPage> {
   }
 
   Future<void> _predict() async {
-    // Reset previous results
+    // Reset previous errors
     setState(() {
-      _predictionResult = null;
       _errorMessage = null;
       _isLoading = true;
     });
@@ -123,26 +121,41 @@ class _PredictionPageState extends State<PredictionPage> {
         body: jsonEncode(requestBody),
       );
 
-      setState(() {
-        _isLoading = false;
-      });
-
+      // Update UI after receiving response
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         setState(() {
-          _predictionResult = data;
+          _isLoading = false;
           _errorMessage = null;
         });
+        // Navigate to results page
+        if (mounted) {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => ResultsPage(predictionResult: data),
+            ),
+          );
+        }
       } else {
         // Handle API errors
-        final errorData = jsonDecode(response.body);
+        String errorDetail =
+            'An error occurred. Please check your input values.';
+        try {
+          final errorData = jsonDecode(response.body);
+          errorDetail = errorData['detail'] ?? errorDetail;
+        } catch (_) {
+          // If response body is not valid JSON, use the status code message
+          errorDetail =
+              'Error ${response.statusCode}: ${response.reasonPhrase ?? "Unknown error"}';
+        }
         setState(() {
-          _errorMessage =
-              errorData['detail'] ??
-              'An error occurred. Please check your input values.';
+          _isLoading = false;
+          _errorMessage = errorDetail;
         });
       }
     } catch (e) {
+      // Handle network errors or JSON parsing errors
       setState(() {
         _isLoading = false;
         _errorMessage =
@@ -512,67 +525,6 @@ class _PredictionPageState extends State<PredictionPage> {
               ),
               const SizedBox(height: 24),
 
-              // Results display area
-              if (_predictionResult != null)
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.green.shade50,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.green.shade200),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Text(
-                            _predictionResult!['risk_color'] ?? '🟢',
-                            style: const TextStyle(fontSize: 24),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              _predictionResult!['risk_category'] ?? 'Unknown',
-                              style: const TextStyle(
-                                fontSize: 20,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.green,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
-                      _buildResultRow(
-                        'Predicted Days:',
-                        '${_predictionResult!['predicted_days']?.toStringAsFixed(0) ?? 'N/A'} days',
-                      ),
-                      _buildResultRow(
-                        'Predicted Months:',
-                        '${_predictionResult!['predicted_months']?.toStringAsFixed(1) ?? 'N/A'} months',
-                      ),
-                      _buildResultRow(
-                        'Predicted Years:',
-                        '${_predictionResult!['predicted_years']?.toStringAsFixed(2) ?? 'N/A'} years',
-                      ),
-                      const SizedBox(height: 12),
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: Text(
-                          _predictionResult!['recommendation'] ??
-                              'No recommendation available',
-                          style: const TextStyle(fontSize: 14),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-
               // Error message display
               if (_errorMessage != null)
                 Container(
@@ -601,17 +553,190 @@ class _PredictionPageState extends State<PredictionPage> {
       ),
     );
   }
+}
+
+// Results Page
+class ResultsPage extends StatelessWidget {
+  final Map<String, dynamic> predictionResult;
+
+  const ResultsPage({super.key, required this.predictionResult});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
+        title: const Text('Prediction Results'),
+        centerTitle: true,
+      ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // Risk Category Card
+            Card(
+              elevation: 4,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: _getRiskColor(
+                    predictionResult['risk_category'] ?? '',
+                  ).withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Column(
+                  children: [
+                    Text(
+                      predictionResult['risk_color'] ?? '🟢',
+                      style: const TextStyle(fontSize: 48),
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      predictionResult['risk_category'] ?? 'Unknown',
+                      style: TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold,
+                        color: _getRiskColor(
+                          predictionResult['risk_category'] ?? '',
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 24),
+
+            // Prediction Details Card
+            Card(
+              elevation: 4,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Survival Prediction',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    _buildResultRow(
+                      'Predicted Days:',
+                      '${predictionResult['predicted_days']?.toStringAsFixed(0) ?? 'N/A'} days',
+                    ),
+                    const Divider(),
+                    _buildResultRow(
+                      'Predicted Months:',
+                      '${predictionResult['predicted_months']?.toStringAsFixed(1) ?? 'N/A'} months',
+                    ),
+                    const Divider(),
+                    _buildResultRow(
+                      'Predicted Years:',
+                      '${predictionResult['predicted_years']?.toStringAsFixed(2) ?? 'N/A'} years',
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 24),
+
+            // Recommendation Card
+            Card(
+              elevation: 4,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.medical_information,
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
+                        const SizedBox(width: 8),
+                        const Text(
+                          'Clinical Recommendation',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      predictionResult['recommendation'] ??
+                          'No recommendation available',
+                      style: const TextStyle(fontSize: 16, height: 1.5),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 24),
+
+            // Back Button
+            ElevatedButton.icon(
+              onPressed: () => Navigator.pop(context),
+              icon: const Icon(Icons.arrow_back),
+              label: const Text('Back to Form'),
+              style: ElevatedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                backgroundColor: Theme.of(context).colorScheme.primary,
+                foregroundColor: Colors.white,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
   Widget _buildResultRow(String label, String value) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
+      padding: const EdgeInsets.symmetric(vertical: 8),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(label, style: const TextStyle(fontWeight: FontWeight.w500)),
-          Text(value, style: const TextStyle(fontWeight: FontWeight.bold)),
+          Text(
+            label,
+            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
+          ),
+          Text(
+            value,
+            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+          ),
         ],
       ),
     );
+  }
+
+  Color _getRiskColor(String riskCategory) {
+    switch (riskCategory.toUpperCase()) {
+      case 'HIGH RISK':
+        return Colors.red;
+      case 'ELEVATED RISK':
+        return Colors.orange;
+      case 'MODERATE RISK':
+        return Colors.yellow.shade700;
+      case 'LOWER RISK':
+        return Colors.green;
+      default:
+        return Colors.grey;
+    }
   }
 }
