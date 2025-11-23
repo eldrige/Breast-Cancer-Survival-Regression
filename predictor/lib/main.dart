@@ -1,4 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
+
+// API Configuration - Update this with your API URL
+const String apiBaseUrl = 'http://localhost:8000';
+const String predictEndpoint = '/predict';
 
 void main() {
   runApp(const MyApp());
@@ -7,116 +13,605 @@ void main() {
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
-  // This widget is the root of your application.
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Flutter Demo',
+      title: 'Breast Cancer Survival Predictor',
       theme: ThemeData(
-        // This is the theme of your application.
-        //
-        // TRY THIS: Try running your application with "flutter run". You'll see
-        // the application has a purple toolbar. Then, without quitting the app,
-        // try changing the seedColor in the colorScheme below to Colors.green
-        // and then invoke "hot reload" (save your changes or press the "hot
-        // reload" button in a Flutter-supported IDE, or press "r" if you used
-        // the command line to start the app).
-        //
-        // Notice that the counter didn't reset back to zero; the application
-        // state is not lost during the reload. To reset the state, use hot
-        // restart instead.
-        //
-        // This works for code too, not just values: Most code changes can be
-        // tested with just a hot reload.
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
+        useMaterial3: true,
       ),
-      home: const MyHomePage(title: 'Flutter Demo Home Page'),
+      home: const PredictionPage(),
     );
   }
 }
 
-class MyHomePage extends StatefulWidget {
-  const MyHomePage({super.key, required this.title});
-
-  // This widget is the home page of your application. It is stateful, meaning
-  // that it has a State object (defined below) that contains fields that affect
-  // how it looks.
-
-  // This class is the configuration for the state. It holds the values (in this
-  // case the title) provided by the parent (in this case the App widget) and
-  // used by the build method of the State. Fields in a Widget subclass are
-  // always marked "final".
-
-  final String title;
+class PredictionPage extends StatefulWidget {
+  const PredictionPage({super.key});
 
   @override
-  State<MyHomePage> createState() => _MyHomePageState();
+  State<PredictionPage> createState() => _PredictionPageState();
 }
 
-class _MyHomePageState extends State<MyHomePage> {
-  int _counter = 0;
+class _PredictionPageState extends State<PredictionPage> {
+  // Form controllers
+  final _formKey = GlobalKey<FormState>();
+  final _ageController = TextEditingController();
+  final _protein1Controller = TextEditingController();
+  final _protein2Controller = TextEditingController();
+  final _protein3Controller = TextEditingController();
+  final _protein4Controller = TextEditingController();
+  final _histologyController = TextEditingController();
+  final _surgeryTypeController = TextEditingController();
 
-  void _incrementCounter() {
+  // Dropdown values
+  String? _selectedGender;
+  String? _selectedTumourStage;
+  String? _selectedERStatus;
+  String? _selectedPRStatus;
+  String? _selectedHER2Status;
+
+  // Prediction result
+  Map<String, dynamic>? _predictionResult;
+  String? _errorMessage;
+  bool _isLoading = false;
+
+  @override
+  void dispose() {
+    _ageController.dispose();
+    _protein1Controller.dispose();
+    _protein2Controller.dispose();
+    _protein3Controller.dispose();
+    _protein4Controller.dispose();
+    _histologyController.dispose();
+    _surgeryTypeController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _predict() async {
+    // Reset previous results
     setState(() {
-      // This call to setState tells the Flutter framework that something has
-      // changed in this State, which causes it to rerun the build method below
-      // so that the display can reflect the updated values. If we changed
-      // _counter without calling setState(), then the build method would not be
-      // called again, and so nothing would appear to happen.
-      _counter++;
+      _predictionResult = null;
+      _errorMessage = null;
+      _isLoading = true;
     });
+
+    // Validate form
+    if (!_formKey.currentState!.validate()) {
+      setState(() {
+        _isLoading = false;
+        _errorMessage = 'Please fill in all required fields correctly.';
+      });
+      return;
+    }
+
+    // Check if all dropdowns are selected
+    if (_selectedGender == null ||
+        _selectedTumourStage == null ||
+        _selectedERStatus == null ||
+        _selectedPRStatus == null ||
+        _selectedHER2Status == null) {
+      setState(() {
+        _isLoading = false;
+        _errorMessage = 'Please select all required dropdown values.';
+      });
+      return;
+    }
+
+    try {
+      // Prepare request body
+      final requestBody = {
+        'Age': int.parse(_ageController.text),
+        'Gender': _selectedGender!.toUpperCase(),
+        'Protein1': double.parse(_protein1Controller.text),
+        'Protein2': double.parse(_protein2Controller.text),
+        'Protein3': double.parse(_protein3Controller.text),
+        'Protein4': double.parse(_protein4Controller.text),
+        'Tumour_Stage': _selectedTumourStage!,
+        'Histology': _histologyController.text,
+        'ER status': _selectedERStatus!,
+        'PR status': _selectedPRStatus!,
+        'HER2 status': _selectedHER2Status!,
+        'Surgery_type': _surgeryTypeController.text,
+      };
+
+      // Make API call
+      final url = Uri.parse('$apiBaseUrl$predictEndpoint');
+      final response = await http.post(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode(requestBody),
+      );
+
+      setState(() {
+        _isLoading = false;
+      });
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        setState(() {
+          _predictionResult = data;
+          _errorMessage = null;
+        });
+      } else {
+        // Handle API errors
+        final errorData = jsonDecode(response.body);
+        setState(() {
+          _errorMessage =
+              errorData['detail'] ??
+              'An error occurred. Please check your input values.';
+        });
+      }
+    } catch (e) {
+      setState(() {
+        _isLoading = false;
+        _errorMessage =
+            'Error connecting to API: ${e.toString()}\n\nPlease ensure the API is running at $apiBaseUrl';
+      });
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    // This method is rerun every time setState is called, for instance as done
-    // by the _incrementCounter method above.
-    //
-    // The Flutter framework has been optimized to make rerunning build methods
-    // fast, so that you can just rebuild anything that needs updating rather
-    // than having to individually change instances of widgets.
     return Scaffold(
       appBar: AppBar(
-        // TRY THIS: Try changing the color here to a specific color (to
-        // Colors.amber, perhaps?) and trigger a hot reload to see the AppBar
-        // change color while the other colors stay the same.
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        // Here we take the value from the MyHomePage object that was created by
-        // the App.build method, and use it to set our appbar title.
-        title: Text(widget.title),
+        title: const Text('Breast Cancer Survival Predictor'),
+        centerTitle: true,
       ),
-      body: Center(
-        // Center is a layout widget. It takes a single child and positions it
-        // in the middle of the parent.
-        child: Column(
-          // Column is also a layout widget. It takes a list of children and
-          // arranges them vertically. By default, it sizes itself to fit its
-          // children horizontally, and tries to be as tall as its parent.
-          //
-          // Column has various properties to control how it sizes itself and
-          // how it positions its children. Here we use mainAxisAlignment to
-          // center the children vertically; the main axis here is the vertical
-          // axis because Columns are vertical (the cross axis would be
-          // horizontal).
-          //
-          // TRY THIS: Invoke "debug painting" (choose the "Toggle Debug Paint"
-          // action in the IDE, or press "p" in the console), to see the
-          // wireframe for each widget.
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: <Widget>[
-            const Text('You have pushed the button this many times:'),
-            Text(
-              '$_counter',
-              style: Theme.of(context).textTheme.headlineMedium,
-            ),
-          ],
+      body: Form(
+        key: _formKey,
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Age field
+              TextFormField(
+                controller: _ageController,
+                decoration: const InputDecoration(
+                  labelText: 'Age *',
+                  hintText: 'Enter age (18-100)',
+                  border: OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.person),
+                ),
+                keyboardType: TextInputType.number,
+                validator: (value) {
+                  if (value == null || value.isEmpty) {
+                    return 'Please enter age';
+                  }
+                  final age = int.tryParse(value);
+                  if (age == null || age < 18 || age > 100) {
+                    return 'Age must be between 18 and 100';
+                  }
+                  return null;
+                },
+              ),
+              const SizedBox(height: 16),
+
+              // Gender dropdown
+              DropdownButtonFormField<String>(
+                value: _selectedGender,
+                decoration: const InputDecoration(
+                  labelText: 'Gender *',
+                  border: OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.wc),
+                ),
+                items: ['MALE', 'FEMALE'].map((String value) {
+                  return DropdownMenuItem<String>(
+                    value: value,
+                    child: Text(value),
+                  );
+                }).toList(),
+                onChanged: (String? newValue) {
+                  setState(() {
+                    _selectedGender = newValue;
+                  });
+                },
+                validator: (value) {
+                  if (value == null || value.isEmpty) {
+                    return 'Please select gender';
+                  }
+                  return null;
+                },
+              ),
+              const SizedBox(height: 16),
+
+              // Protein fields
+              Row(
+                children: [
+                  Expanded(
+                    child: TextFormField(
+                      controller: _protein1Controller,
+                      decoration: const InputDecoration(
+                        labelText: 'Protein1 *',
+                        hintText: '-5.0 to 5.0',
+                        border: OutlineInputBorder(),
+                      ),
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                      validator: (value) {
+                        if (value == null || value.isEmpty) {
+                          return 'Required';
+                        }
+                        final protein = double.tryParse(value);
+                        if (protein == null ||
+                            protein < -5.0 ||
+                            protein > 5.0) {
+                          return 'Range: -5.0 to 5.0';
+                        }
+                        return null;
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: TextFormField(
+                      controller: _protein2Controller,
+                      decoration: const InputDecoration(
+                        labelText: 'Protein2 *',
+                        hintText: '-5.0 to 5.0',
+                        border: OutlineInputBorder(),
+                      ),
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                      validator: (value) {
+                        if (value == null || value.isEmpty) {
+                          return 'Required';
+                        }
+                        final protein = double.tryParse(value);
+                        if (protein == null ||
+                            protein < -5.0 ||
+                            protein > 5.0) {
+                          return 'Range: -5.0 to 5.0';
+                        }
+                        return null;
+                      },
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextFormField(
+                      controller: _protein3Controller,
+                      decoration: const InputDecoration(
+                        labelText: 'Protein3 *',
+                        hintText: '-5.0 to 5.0',
+                        border: OutlineInputBorder(),
+                      ),
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                      validator: (value) {
+                        if (value == null || value.isEmpty) {
+                          return 'Required';
+                        }
+                        final protein = double.tryParse(value);
+                        if (protein == null ||
+                            protein < -5.0 ||
+                            protein > 5.0) {
+                          return 'Range: -5.0 to 5.0';
+                        }
+                        return null;
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: TextFormField(
+                      controller: _protein4Controller,
+                      decoration: const InputDecoration(
+                        labelText: 'Protein4 *',
+                        hintText: '-5.0 to 5.0',
+                        border: OutlineInputBorder(),
+                      ),
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                      validator: (value) {
+                        if (value == null || value.isEmpty) {
+                          return 'Required';
+                        }
+                        final protein = double.tryParse(value);
+                        if (protein == null ||
+                            protein < -5.0 ||
+                            protein > 5.0) {
+                          return 'Range: -5.0 to 5.0';
+                        }
+                        return null;
+                      },
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+
+              // Tumour Stage dropdown
+              DropdownButtonFormField<String>(
+                value: _selectedTumourStage,
+                decoration: const InputDecoration(
+                  labelText: 'Tumour Stage *',
+                  border: OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.medical_services),
+                ),
+                items: ['I', 'II', 'III'].map((String value) {
+                  return DropdownMenuItem<String>(
+                    value: value,
+                    child: Text(value),
+                  );
+                }).toList(),
+                onChanged: (String? newValue) {
+                  setState(() {
+                    _selectedTumourStage = newValue;
+                  });
+                },
+                validator: (value) {
+                  if (value == null || value.isEmpty) {
+                    return 'Please select tumour stage';
+                  }
+                  return null;
+                },
+              ),
+              const SizedBox(height: 16),
+
+              // Histology field
+              TextFormField(
+                controller: _histologyController,
+                decoration: const InputDecoration(
+                  labelText: 'Histology *',
+                  hintText: 'e.g., Infiltrating Ductal Carcinoma',
+                  border: OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.science),
+                ),
+                validator: (value) {
+                  if (value == null || value.isEmpty) {
+                    return 'Please enter histology';
+                  }
+                  return null;
+                },
+              ),
+              const SizedBox(height: 16),
+
+              // Status dropdowns
+              Row(
+                children: [
+                  Expanded(
+                    child: DropdownButtonFormField<String>(
+                      value: _selectedERStatus,
+                      decoration: const InputDecoration(
+                        labelText: 'ER Status *',
+                        border: OutlineInputBorder(),
+                      ),
+                      items: ['Positive', 'Negative'].map((String value) {
+                        return DropdownMenuItem<String>(
+                          value: value,
+                          child: Text(value),
+                        );
+                      }).toList(),
+                      onChanged: (String? newValue) {
+                        setState(() {
+                          _selectedERStatus = newValue;
+                        });
+                      },
+                      validator: (value) {
+                        if (value == null || value.isEmpty) {
+                          return 'Required';
+                        }
+                        return null;
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: DropdownButtonFormField<String>(
+                      value: _selectedPRStatus,
+                      decoration: const InputDecoration(
+                        labelText: 'PR Status *',
+                        border: OutlineInputBorder(),
+                      ),
+                      items: ['Positive', 'Negative'].map((String value) {
+                        return DropdownMenuItem<String>(
+                          value: value,
+                          child: Text(value),
+                        );
+                      }).toList(),
+                      onChanged: (String? newValue) {
+                        setState(() {
+                          _selectedPRStatus = newValue;
+                        });
+                      },
+                      validator: (value) {
+                        if (value == null || value.isEmpty) {
+                          return 'Required';
+                        }
+                        return null;
+                      },
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+
+              // HER2 Status dropdown
+              DropdownButtonFormField<String>(
+                value: _selectedHER2Status,
+                decoration: const InputDecoration(
+                  labelText: 'HER2 Status *',
+                  border: OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.health_and_safety),
+                ),
+                items: ['Positive', 'Negative'].map((String value) {
+                  return DropdownMenuItem<String>(
+                    value: value,
+                    child: Text(value),
+                  );
+                }).toList(),
+                onChanged: (String? newValue) {
+                  setState(() {
+                    _selectedHER2Status = newValue;
+                  });
+                },
+                validator: (value) {
+                  if (value == null || value.isEmpty) {
+                    return 'Please select HER2 status';
+                  }
+                  return null;
+                },
+              ),
+              const SizedBox(height: 16),
+
+              // Surgery Type field
+              TextFormField(
+                controller: _surgeryTypeController,
+                decoration: const InputDecoration(
+                  labelText: 'Surgery Type *',
+                  hintText: 'e.g., Lumpectomy',
+                  border: OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.local_hospital),
+                ),
+                validator: (value) {
+                  if (value == null || value.isEmpty) {
+                    return 'Please enter surgery type';
+                  }
+                  return null;
+                },
+              ),
+              const SizedBox(height: 24),
+
+              // Predict button
+              ElevatedButton(
+                onPressed: _isLoading ? null : _predict,
+                style: ElevatedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  backgroundColor: Theme.of(context).colorScheme.primary,
+                  foregroundColor: Colors.white,
+                ),
+                child: _isLoading
+                    ? const SizedBox(
+                        height: 20,
+                        width: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            Colors.white,
+                          ),
+                        ),
+                      )
+                    : const Text(
+                        'Predict',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+              ),
+              const SizedBox(height: 24),
+
+              // Results display area
+              if (_predictionResult != null)
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.green.shade50,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.green.shade200),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Text(
+                            _predictionResult!['risk_color'] ?? '🟢',
+                            style: const TextStyle(fontSize: 24),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              _predictionResult!['risk_category'] ?? 'Unknown',
+                              style: const TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.green,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      _buildResultRow(
+                        'Predicted Days:',
+                        '${_predictionResult!['predicted_days']?.toStringAsFixed(0) ?? 'N/A'} days',
+                      ),
+                      _buildResultRow(
+                        'Predicted Months:',
+                        '${_predictionResult!['predicted_months']?.toStringAsFixed(1) ?? 'N/A'} months',
+                      ),
+                      _buildResultRow(
+                        'Predicted Years:',
+                        '${_predictionResult!['predicted_years']?.toStringAsFixed(2) ?? 'N/A'} years',
+                      ),
+                      const SizedBox(height: 12),
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          _predictionResult!['recommendation'] ??
+                              'No recommendation available',
+                          style: const TextStyle(fontSize: 14),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+              // Error message display
+              if (_errorMessage != null)
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.red.shade50,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.red.shade200),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.error_outline, color: Colors.red),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          _errorMessage!,
+                          style: const TextStyle(color: Colors.red),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _incrementCounter,
-        tooltip: 'Increment',
-        child: const Icon(Icons.add),
-      ), // This trailing comma makes auto-formatting nicer for build methods.
+    );
+  }
+
+  Widget _buildResultRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label, style: const TextStyle(fontWeight: FontWeight.w500)),
+          Text(value, style: const TextStyle(fontWeight: FontWeight.bold)),
+        ],
+      ),
     );
   }
 }
