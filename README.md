@@ -47,7 +47,7 @@ Content-Type: application/json
 
 ## 📹 Video Demo
 
-**YouTube Demo Link:** [Add your YouTube video link here] (Maximum 5 minutes)
+**YouTube Demo Link:** [https://jam.dev/c/6bac75c9-ddc2-4817-9e9f-91a2631bbca8](https://jam.dev/c/6bac75c9-ddc2-4817-9e9f-91a2631bbca8) (Hosted on Jam.dev)
 
 The video demonstration covers:
 
